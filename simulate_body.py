@@ -24,7 +24,6 @@ def elephant_simulation_CRNN(ctrnn_file):
     robot_id = p.loadURDF("elephant.urdf")
 
     # Debugging!
-    #
     # # Print the available link names
     # link_names = p.getBodyInfo(robot_id)
     # print()
@@ -43,6 +42,7 @@ def elephant_simulation_CRNN(ctrnn_file):
 
     duration = 2000
     num_legs = 4
+    step_height = 0.5
 
     ps.Prepare_To_Simulate(robot_id)
     p.setJointMotorControlArray(robot_id,
@@ -50,8 +50,6 @@ def elephant_simulation_CRNN(ctrnn_file):
                                 p.POSITION_CONTROL,
                                 targetPositions=[0] * num_legs,
                                 forces=[500] * num_legs)
-
-    step_height = 0.5
 
     nn = ctrnn.CTRNN(num_legs)
     nn.load(ctrnn_file)
@@ -100,65 +98,72 @@ def movement_sim_CRNN(num_legs, step_height, robot_id, nn_outputs):
                                 forces=[500] * num_legs)
 
 
-def elephant_race_simulation():
+def elephant_race_simulation(ctrnn_files):
     p.setGravity(0, 0, -9.8)
     p.loadURDF("plane.urdf")
 
-    # Create multiple elephants with different movement patterns
-    num_elephants = 3
+    num_elephants = len(ctrnn_files)
     robot_ids = [p.loadURDF("elephant.urdf", basePosition=[0, i * 6, 0]) for i in range(num_elephants)]
+    nns = []
 
-    duration = 3000
+    # Debugging!
+    # for robot_id in robot_ids:
+    #     print()
+    #     print(f'Robot ID: f{robot_id}')
+    #     # Print the available link names
+    #     link_names = p.getBodyInfo(robot_id)
+    #     print('Body Names:')
+    #     print(link_names)
+    #
+    #     # Additionally, check the total number of links
+    #     num_links = p.getNumJoints(robot_id)
+    #     print(f"Total joints: {num_links}")
+    #
+    #     print('Joints:')
+    #     for index in range(num_links):
+    #         joint = p.getJointInfo(robot_id, index)
+    #         print(joint)
+    #     print()
+
+    duration = 200000
     num_legs = 4
     step_height = 0.5
+
+    for robot_id in robot_ids:
+        ps.Prepare_To_Simulate(robot_id)
+        p.setJointMotorControlArray(robot_id,
+                                    range(num_legs),
+                                    p.POSITION_CONTROL,
+                                    targetPositions=[0] * num_legs,
+                                    forces=[500] * num_legs)
+
+    for ctrnn_file in ctrnn_files:
+        nn = ctrnn.CTRNN(num_legs)
+        nn.load(ctrnn_file)
+        nn.initialize_state(np.zeros(num_legs))
+        nns.append(nn)
 
     # To track movement
     initial_positions = [p.getBasePositionAndOrientation(robot_id)[0][0] for robot_id in robot_ids]
     distances_moved = [0] * num_elephants
 
-    nn1 = ctrnn.CTRNN(num_legs)
-    nn1.load('ctrnn_1.npz')
-    nn1.initialize_state(np.zeros(num_legs))
-
-    nn2 = ctrnn.CTRNN(num_legs)
-    nn2.load('ctrnn_2.npz')
-    nn2.initialize_state(np.zeros(num_legs))
-
-    nn3 = ctrnn.CTRNN(num_legs)
-    nn3.load('ctrnn_3.npz')
-    nn3.initialize_state(np.zeros(num_legs))
-
     for i in range(duration):
-        print()
-        print(i)
-        foot_sensors = [
-            ps.Get_Touch_Sensor_Value_For_Link(f'1'),
-            ps.Get_Touch_Sensor_Value_For_Link(f'2'),
-            ps.Get_Touch_Sensor_Value_For_Link(f'3'),
-            ps.Get_Touch_Sensor_Value_For_Link(f'4')
-        ]
-
-        dt = 0.01
-
-        nn1.inputs = np.array(foot_sensors)
-        nn1.step(dt)
-        nn1_outputs = nn1.outputs
-
-        nn2.inputs = np.array(foot_sensors)
-        nn2.step(dt)
-        nn2_outputs = nn2.outputs
-
-        nn3.inputs = np.array(foot_sensors)
-        nn3.step(dt)
-        nn3_outputs = nn3.outputs
-
         for idx, robot_id in enumerate(robot_ids):
-            if idx == 0:
-                movement_sim_CRNN(num_legs, step_height, robot_id, nn1_outputs)
-            elif idx == 1:
-                movement_sim_CRNN(num_legs, step_height, robot_id, nn2_outputs)
-            elif idx == 2:
-                movement_sim_CRNN(num_legs, step_height, robot_id, nn3_outputs)
+
+            foot_sensors = [
+                ps.Get_Touch_Sensor_Value_For_Link(f'1'),
+                ps.Get_Touch_Sensor_Value_For_Link(f'2'),
+                ps.Get_Touch_Sensor_Value_For_Link(f'3'),
+                ps.Get_Touch_Sensor_Value_For_Link(f'4')
+                # ps.Get_Touch_Sensor_Value_For_Link(f'Foot_{j + 1}') for j in range(num_legs)
+            ]
+
+            nns[idx].inputs = np.array(foot_sensors)
+
+            dt = 0.01
+            nns[idx].step(dt)
+            nn_outputs = nns[idx].outputs
+            movement_sim_CRNN(num_legs, step_height, robot_id, nn_outputs)
 
             p.stepSimulation()
 
@@ -183,8 +188,10 @@ def plot_results(num_elephants, distances_moved):
     plt.show()
 
 
-elephant_simulation_CRNN('ctrnn_3.npz')
-# elephant_race_simulation()
+# elephant_simulation_CRNN('ctrnn_3.npz')
+
+nn_arr = ['ctrnn_1.npz', 'ctrnn_2.npz', 'ctrnn_3.npz']
+elephant_race_simulation(nn_arr)
 
 
 # References
